@@ -1,25 +1,42 @@
 from ultralytics import YOLO
-import numpy as np
-import cv2 as cv
+from ultralytics.solutions import speed_estimation
+import cv2
 
-model = YOLO('yolov8n.pt')
+model = YOLO("dronesv2.pt")
+names = model.model.names
 
-cap = cv.VideoCapture(0)
-if not cap.isOpened():
-    print("Cannot open camera")
-    exit()
-while (cap.isOpened()):
-    # Capture frame-by-frame
-    ret, frame = cap.read()
-    # if frame is read correctly ret is True
-    if not ret:
-        print("Can't receive frame (stream end?). Exiting ...")
+cap = cv2.VideoCapture("testvid.mp4")
+assert cap.isOpened(), "Error reading video file"
+w, h, fps = (int(cap.get(x)) for x in (cv2.CAP_PROP_FRAME_WIDTH, cv2.CAP_PROP_FRAME_HEIGHT, cv2.CAP_PROP_FPS))
+
+# Video writer
+video_writer = cv2.VideoWriter("speed_estimation.mp4",
+                               cv2.VideoWriter_fourcc(*'mp4v'),
+                               fps,
+                               (w, h))
+
+line_pts = [(0, 0), (0, 0)]
+
+# Init speed-estimation obj
+speed_obj = speed_estimation.SpeedEstimator()
+speed_obj.set_args(reg_pts=line_pts,
+                   names=names,
+                   view_img=True)
+
+while cap.isOpened():
+
+    success, im0 = cap.read()
+    if not success:
+        print("Video frame is empty or video processing has been successfully completed.")
         break
-    # Display the resulting frame
-    if cv.waitKey(1) == ord('q'):
+
+    tracks = model.track(im0, persist=True, show=False)
+
+    im0 = speed_obj.estimate_speed(im0, tracks)
+    video_writer.write(im0)
+    if cv2.waitKey(1) == ord('q'):
         break
-    model.predict(frame, show=True, conf=0.5)
-    
-# When everything done, release the capture
+
 cap.release()
-cv.destroyAllWindows()
+video_writer.release()
+cv2.destroyAllWindows()
